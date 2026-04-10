@@ -14,6 +14,13 @@ type Client struct {
 	httpClient *http.Client
 }
 
+type apiResponse struct {
+	Msg     string          `json:"msg"`
+	Data    json.RawMessage `json:"data"`
+	Code    int             `json:"code"`
+	Success bool            `json:"success"`
+}
+
 type NoteListResponse struct {
 	List      []Note `json:"list"`
 	Total     int    `json:"total"`
@@ -48,39 +55,37 @@ func NewClient(baseURL, token string) *Client {
 }
 
 func (c *Client) ListNotesByAuthor(authorID string, pageIndex, pageSize int) (*NoteListResponse, error) {
-	url := fmt.Sprintf("%s/note/list?authorId=%s&pageIndex=%d&pageSize=%d&sort=desc&sortBy=createTime",
+	url := fmt.Sprintf("%s/cli/note/list?authorId=%s&pageIndex=%d&pageSize=%d&sort=desc&sortBy=createTime",
 		c.baseURL, authorID, pageIndex, pageSize)
-	return c.doNoteListRequest(url)
-}
 
-func (c *Client) GetNote(id string) (*Note, error) {
-	url := fmt.Sprintf("%s/note/%s", c.baseURL, id)
-
-	req, err := http.NewRequest("GET", url, nil)
+	body, err := c.doRequest(url)
 	if err != nil {
 		return nil, err
 	}
-	c.setHeaders(req)
 
-	resp, err := c.httpClient.Do(req)
-	if err != nil {
-		return nil, fmt.Errorf("request failed: %w", err)
+	var result NoteListResponse
+	if err := json.Unmarshal(body, &result); err != nil {
+		return nil, fmt.Errorf("decode note list: %w", err)
 	}
-	defer resp.Body.Close()
+	return &result, nil
+}
 
-	if resp.StatusCode != 200 {
-		body, _ := io.ReadAll(resp.Body)
-		return nil, fmt.Errorf("API error %d: %s", resp.StatusCode, string(body))
+func (c *Client) GetNote(id string) (*Note, error) {
+	url := fmt.Sprintf("%s/cli/note?id=%s", c.baseURL, id)
+
+	body, err := c.doRequest(url)
+	if err != nil {
+		return nil, err
 	}
 
 	var note Note
-	if err := json.NewDecoder(resp.Body).Decode(&note); err != nil {
-		return nil, fmt.Errorf("decode response: %w", err)
+	if err := json.Unmarshal(body, &note); err != nil {
+		return nil, fmt.Errorf("decode note: %w", err)
 	}
 	return &note, nil
 }
 
-func (c *Client) doNoteListRequest(url string) (*NoteListResponse, error) {
+func (c *Client) doRequest(url string) (json.RawMessage, error) {
 	req, err := http.NewRequest("GET", url, nil)
 	if err != nil {
 		return nil, err
@@ -98,11 +103,16 @@ func (c *Client) doNoteListRequest(url string) (*NoteListResponse, error) {
 		return nil, fmt.Errorf("API error %d: %s", resp.StatusCode, string(body))
 	}
 
-	var result NoteListResponse
-	if err := json.NewDecoder(resp.Body).Decode(&result); err != nil {
-		return nil, fmt.Errorf("decode response: %w", err)
+	var wrapper apiResponse
+	if err := json.NewDecoder(resp.Body).Decode(&wrapper); err != nil {
+		return nil, fmt.Errorf("decode wrapper: %w", err)
 	}
-	return &result, nil
+
+	if wrapper.Msg != "" {
+		return nil, fmt.Errorf("API error: %s", wrapper.Msg)
+	}
+
+	return wrapper.Data, nil
 }
 
 func (c *Client) setHeaders(req *http.Request) {

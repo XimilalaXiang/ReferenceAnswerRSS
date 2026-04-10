@@ -56,24 +56,33 @@ func main() {
 	if err != nil {
 		log.Fatalf("Failed to get embedded FS: %v", err)
 	}
-	fileServer := http.FileServer(http.FS(distFS))
 
-	mux.HandleFunc("/", func(w http.ResponseWriter, r *http.Request) {
-		path := r.URL.Path
-		if path == "/" || path == "/index.html" {
-			r.URL.Path = "/index.html"
-			fileServer.ServeHTTP(w, r)
-			return
-		}
-
-		f, err := distFS.Open(path[1:])
+	serveIndex := func(w http.ResponseWriter, r *http.Request) {
+		data, err := fs.ReadFile(distFS, "index.html")
 		if err != nil {
-			r.URL.Path = "/index.html"
-			fileServer.ServeHTTP(w, r)
+			http.Error(w, "not found", 404)
 			return
 		}
-		f.Close()
-		fileServer.ServeHTTP(w, r)
+		w.Header().Set("Content-Type", "text/html; charset=utf-8")
+		w.Write(data)
+	}
+
+	mux.HandleFunc("GET /assets/{file...}", func(w http.ResponseWriter, r *http.Request) {
+		http.FileServerFS(distFS).ServeHTTP(w, r)
+	})
+
+	mux.HandleFunc("GET /{path...}", func(w http.ResponseWriter, r *http.Request) {
+		path := r.PathValue("path")
+		if path == "" {
+			serveIndex(w, r)
+			return
+		}
+		if f, err := distFS.Open(path); err == nil {
+			f.Close()
+			http.FileServerFS(distFS).ServeHTTP(w, r)
+			return
+		}
+		serveIndex(w, r)
 	})
 
 	syncService.Start()
