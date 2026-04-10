@@ -1,0 +1,18 @@
+services:
+  app:
+    build: .
+    container_name: reference-answer-rss
+    restart: unless-stopped
+    ports:
+      - "8080:8080"
+    volumes:
+      - ./data:/app/data
+    environment:
+      - XINZHI_TOKEN=${XINZHI_TOKEN}
+      - JWT_SECRET=${JWT_SECRET:-change-me-in-production}
+      - ADMIN_USERNAME=${ADMIN_USERNAME:-admin}
+      - ADMIN_PASSWORD=${ADMIN_PASSWORD:-admin}
+      - AUTHOR_ID=${AUTHOR_ID:-6905098d5f77b11d2fb2b653}
+      - SYNC_INTERVAL_HOURS=${SYNC_INTERVAL_HOURS:-12}
+      - BASE_URL=${BASE_URL:-http://localhost:8080}
+      - TZ=Asia/Shanghai
